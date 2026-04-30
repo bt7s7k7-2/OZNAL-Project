@@ -156,6 +156,8 @@ with ui.sidebar(width=350):
 
     ui.input_action_button("go", "Run Pipeline").add_class("btn-primary w-100")
 
+    ui.input_text("inst", "_inst", "{}").add_style("display: none;")
+
 
 @cache
 def get_data():
@@ -171,11 +173,14 @@ def get_data():
 
 
 @reactive.calc
-@reactive.event(input.go, input.transform_y, input.transform_x, ignore_none=False)
+@reactive.event(input.go, ignore_none=False)
 def pipeline():
     X, y = get_data()
 
     result = {}
+    inst = {}
+    inst["transform_y"] = input.transform_y()
+    inst["transform_x"] = input.transform_x()
 
     result["_1"] = f"Original shape: X={X.shape}, y={y.shape}"
     result["_1"] += f"\nFeatures: {X.shape[1]}, Samples: {X.shape[0]}"
@@ -209,6 +214,8 @@ def pipeline():
 
     reduction_strategy, reduction_executor = execute_strategy("reduction_method")
     result["_3"] = f"Using dimensionality reduction: {reduction_strategy.label}"
+
+    inst["dimensional_reduction"] = reduction_executor is not None
 
     if reduction_executor is not None:
         if isinstance(reduction_executor, Callable):
@@ -274,7 +281,7 @@ with ui.card() as card:
 
         return fig
 
-    with ui.panel_conditional("input.transform_y"):
+    with ui.panel_conditional("JSON.parse(input.inst).transform_y"):
 
         @render.plot
         def output_y_processed():
@@ -295,7 +302,7 @@ with ui.card() as card:
         result = pipeline()
         ui.span(result["_2"]).add_style(PRE_WRAP)
 
-    with ui.panel_conditional("input.transform_x"):
+    with ui.panel_conditional("JSON.parse(input.inst).transform_x"):
 
         @render.data_frame
         def output_x_processed():
@@ -307,13 +314,14 @@ with ui.card() as card:
             return X
 
 
-with ui.card(**{"class": "mt-4"}):  # pyright: ignore[reportArgumentType]
-    ui.card_header("Dimensionality Reduction")
+with ui.panel_conditional("JSON.parse(input.inst).dimensional_reduction"):
+    with ui.card(**{"class": "mt-4"}):  # pyright: ignore[reportArgumentType]
+        ui.card_header("Dimensionality Reduction")
 
-    @render.express
-    def output_3():
-        result = pipeline()
-        ui.span(result["_3"]).add_style(PRE_WRAP)
+        @render.express
+        def output_3():
+            result = pipeline()
+            ui.span(result["_3"]).add_style(PRE_WRAP)
 
 
 with ui.card(**{"class": "mt-4"}):  # pyright: ignore[reportArgumentType]
