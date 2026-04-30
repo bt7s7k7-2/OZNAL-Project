@@ -247,10 +247,15 @@ def pipeline():
         y_pred = ml_executor.predict(X_test)
 
     r2 = r2_score(y_test, y_pred)
-    mse = mean_squared_error(
-        y_test if transformer is None else transformer.inverse_transform(y_test),
-        y_pred if transformer is None else transformer.inverse_transform(y_pred.reshape(-1, 1)),
-    )
+
+    transformed_true = y_test if transformer is None else transformer.inverse_transform(y_test)
+    transformed_pred = y_pred if transformer is None else transformer.inverse_transform(y_pred.reshape(-1, 1))
+
+    valid_transformed_values = np.logical_not(np.isnan(transformed_pred))
+    transformed_true = transformed_true[valid_transformed_values]
+    transformed_pred = transformed_pred[valid_transformed_values]
+
+    mse = mean_squared_error(transformed_true, transformed_pred)
 
     result["_4"] += f"\nScore: MSE: {mse:.6f}; R²: {r2:.4f}"
 
