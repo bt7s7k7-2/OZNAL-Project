@@ -241,6 +241,14 @@ def pipeline():
 
     result["_4"] += f"\nScore: MSE: {mse:.6f}; R²: {r2:.4f}"
 
+    if hasattr(ml_executor, "coef_"):
+        result["_4"] += f"\nCoefficients: {getattr(ml_executor, "coef_")}"
+
+    if hasattr(ml_executor, "feature_importances_"):
+        result["_4"] += f"\nFeature importances: {getattr(ml_executor, "feature_importances_")}"
+
+    ui.update_text("inst", value=dumps(inst))
+
     return result
 
 
