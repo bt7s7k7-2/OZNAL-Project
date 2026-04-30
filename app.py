@@ -11,6 +11,7 @@ from sklearn.cross_decomposition import PLSRegression
 from sklearn.decomposition import PCA
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor
+from sklearn.inspection import PartialDependenceDisplay
 from sklearn.linear_model import ElasticNetCV, Lasso, LinearRegression
 from sklearn.metrics import mean_squared_error, r2_score
 from sklearn.model_selection import train_test_split
@@ -93,8 +94,8 @@ ml_strategies = [
         lambda: KNeighborsRegressor(n_jobs=-1),
         {
             "n_neighbours": lambda key: ui.input_slider(key, "Neighbours", 10, 200, 50, step=10),
-            "metric": lambda key: ui.input_select(key, "Metric", ["uniform", "distance"], selected="uniform"),
-            "weights": lambda key: ui.input_select(key, "Weights", ["euclidean", "manhattan", "minkowski"], selected="manhattan"),
+            "weights": lambda key: ui.input_select(key, "Weights", ["uniform", "distance"], selected="uniform"),
+            "metric": lambda key: ui.input_select(key, "Metric", ["euclidean", "manhattan", "minkowski"], selected="manhattan"),
         },
     ),
 ]
@@ -246,6 +247,9 @@ def pipeline():
         ml_executor.fit(X_train, y_train)
         y_pred = ml_executor.predict(X_test)
 
+    result["model"] = ml_executor
+    result["model_data"] = X
+
     r2 = r2_score(y_test, y_pred)
 
     transformed_true = y_test if transformer is None else transformer.inverse_transform(y_test)
@@ -390,3 +394,38 @@ with ui.card(**{"class": "mt-4"}):  # pyright: ignore[reportArgumentType]
     def output_4():
         result = pipeline()
         ui.span(result["_4"]).add_style(PRE_WRAP)
+
+    with ui.accordion(open=False):
+        with ui.accordion_panel("Partial Dependence Display"):
+            ui.input_select("pdp_feature", "Feature", [])
+            ui.input_select("pdp_feature_2", "Secondary Feature", [])
+
+            @reactive.calc
+            def pdp_data():
+                result = pipeline()
+                model = result["model"]
+                X = result["model_data"]
+                choices = [f"{i+1}" for i in range(X.shape[1])]
+                ui.update_select("pdp_feature", choices=choices)
+                ui.update_select("pdp_feature_2", choices=["None", *choices])
+                return model, choices, X
+
+            @render.plot
+            def pdp_output():
+                model, choices, X = pdp_data()
+                try:
+                    feature = choices.index(input.pdp_feature())
+                except ValueError:
+                    return
+
+                try:
+                    feature_2 = None if (_ := input.pdp_feature_2()) == "None" else choices.index(_)
+                except ValueError:
+                    return
+
+                fig, ax = plt.subplots()
+                if feature_2 is None:
+                    PartialDependenceDisplay.from_estimator(model, X, (feature,), ax=ax)
+                else:
+                    PartialDependenceDisplay.from_estimator(model, X, ((feature, feature_2),), ax=ax)
+                return fig
