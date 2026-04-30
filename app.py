@@ -23,12 +23,12 @@ from src.StrategyType import StrategyType
 ui.page_opts(title="Communities and Crime Dataset")
 
 
-def lda_process(lda, params, X, y):
+def lda_process(lda: LinearDiscriminantAnalysis, params, X, y):
     y_binned = pd.qcut(y.iloc[:, 0], q=params["n_components"] + 1, labels=False, duplicates="drop")
     actual_classes = len(np.unique(y_binned))
 
     max_lda_components = actual_classes - 1
-    lda = LinearDiscriminantAnalysis(n_components=max_lda_components)
+    lda.set_params(n_components=max_lda_components)
     return lda.fit_transform(X, y_binned)
 
 
@@ -203,6 +203,8 @@ def pipeline():
     y = y.drop(_)
     result["_2"] += f"\nDataset shape after dropping missing values: {X.shape}"
 
+    result["x_raw"] = X
+
     if input.transform_x():
         scaler = StandardScaler()
         X = pd.DataFrame(scaler.fit_transform(X), columns=X.columns)
@@ -216,6 +218,7 @@ def pipeline():
     result["_3"] = f"Using dimensionality reduction: {reduction_strategy.label}"
 
     inst["dimensional_reduction"] = reduction_executor is not None
+    result["reduction"] = reduction_executor
 
     if reduction_executor is not None:
         if isinstance(reduction_executor, Callable):
@@ -225,6 +228,9 @@ def pipeline():
             X = reduction_executor.transform(X)
 
     result["_3"] += f"\nReduced dataset shape: {X.shape}"
+
+    if isinstance(reduction_executor, PCA):
+        result["_3"] += f"\nExplained variance: {reduction_executor.explained_variance_ratio_.sum():.4f}"
 
     ml_strategy, ml_executor = execute_strategy("ml_method")
     result["_4"] = f"Using model: {ml_strategy.label}"
@@ -322,6 +328,54 @@ with ui.panel_conditional("JSON.parse(input.inst).dimensional_reduction"):
         def output_3():
             result = pipeline()
             ui.span(result["_3"]).add_style(PRE_WRAP)
+
+        with ui.accordion(open=False):
+            with ui.accordion_panel("Feature Mapping"):
+                ui.input_select("reduction_preview", "Feature", ["None"])
+
+                @reactive.calc
+                def feature_mapping_data():
+                    result = pipeline()
+                    reduction = result["reduction"]
+                    X = result["x_raw"]
+                    result = dict[str, pd.DataFrame]()
+
+                    if isinstance(reduction, partial):
+                        reduction = reduction.args[0]
+
+                    print(reduction)
+
+                    def add_feature(name, contribution):
+                        result[name] = pd.DataFrame(contribution, columns=[name], index=X.columns).reset_index(names="Feature").sort_values(name, key=abs, ascending=False)
+
+                    if reduction is None:
+                        pass
+                    elif isinstance(reduction, LinearDiscriminantAnalysis):
+                        scalings = reduction.scalings_
+                        for i in range(scalings.shape[1]):
+                            add_feature(f"LD{i+1}", scalings[:, i])
+                    elif isinstance(reduction, PCA):
+                        components = reduction.components_
+                        for i in range(components.shape[0]):
+                            add_feature(f"PCA{i+1}", components[i, :])
+                    elif isinstance(reduction, PLSRegression):
+                        components = reduction.x_loadings_
+                        for i in range(components.shape[1]):
+                            add_feature(f"PLS{i+1}", components[:, i])
+                    else:
+                        raise RuntimeError("This dimensionality reduction method does not support feature mapping preview")
+
+                    ui.update_select("reduction_preview", choices=["None", *result.keys()])
+                    return result
+
+                @render.data_frame
+                def feature_mapping():
+                    feature = input.reduction_preview()
+                    data = feature_mapping_data()
+                    if feature == "None" or feature not in data:
+                        return
+
+                    return data[feature]
 
 
 with ui.card(**{"class": "mt-4"}):  # pyright: ignore[reportArgumentType]
